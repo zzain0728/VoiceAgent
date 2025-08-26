@@ -39,6 +39,13 @@ print(REPLICATE_API_TOKEN)
 print(GROQ_API_KEY)
 
 
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+SYSTEM_PROMPT = "You are a helpful, concise assistant."
+MODEL = "llama3-70b-8192"   # try "mixtral-8x7b-32768" too
+
+
+
 class AIVoiceAgent:
     def __init__(self):
         self.replicate_token = REPLICATE_API_TOKEN
@@ -62,48 +69,66 @@ class AIVoiceAgent:
 
 
 
-        def _start_transcription(self):
-            print("\n 🎙️ Listening...")
+    def _start_transcription(self):
+        print("\n 🎙️ Listening...")
 
 
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-SYSTEM_PROMPT = "You are a helpful, concise assistant."
-MODEL = "llama3-70b-8192"   # try "mixtral-8x7b-32768" too
 
-messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-print("Chat started. Type /reset to clear, /exit to quit.\n")
-while True:
-    try:
-        user = input("You: ").strip()
-        if not user:
-            continue
-        if user.lower() == "/exit":
-            break
-        if user.lower() == "/reset":
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-            print("(Context reset)\n")
-            continue
 
-        messages.append({"role": "user", "content": user})
+    def startConversation(self):
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-        resp = client.chat.completions.create(
-            model=MODEL,
-            messages=messages,
-            temperature=0.7,   # tweak style/creativity
-            max_tokens=512     # cap response length
+        print("Chat started. Type /reset to clear, /exit to quit.\n")
+        while True:
+            try:
+                user = input("You: ").strip()
+                if not user:
+                    continue
+                if user.lower() == "/exit":
+                    break
+                if user.lower() == "/reset":
+                    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+                    print("(Context reset)\n")
+                    continue
+
+                messages.append({"role": "user", "content": user})
+
+                resp = client.chat.completions.create(
+                    model=MODEL,
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=512
+                )
+                reply = resp.choices[0].message.content
+                print(f"Assistant: {reply}\n")
+                messages.append({"role": "assistant", "content": reply})
+
+            except KeyboardInterrupt:
+                print("\n(Interrupted)")
+                break
+
+
+    def _start_transcription(self):
+        print("\n 🎙️ Listening...")
+        self.transcriber = aai.RealtimeTranscriber(
+            sample_rate=16000,
+            on_data=self._on_data,
+            on_error=self._on_error,
+            on_open=self._on_open,
+            on_close=self._on_close,
         )
-        reply = resp.choices[0].message.content
-        print(f"Assistant: {reply}\n")
-        messages.append({"role": "assistant", "content": reply})
+        self.transcriber.connect()
+        try:
+            self.transcriber.stream(aai.extras.MicrophoneStream(sample_rate=16000))
+        except Exception as e:
+            print(f"Mic error: {e}")
+            self._close_transcriber()
 
-    except KeyboardInterrupt:
-        print("\n(Interrupted)")
-        break
 
-print(messages)
+
 '''
 audio_file = "https://assembly.ai/wildfires.mp3"
 
@@ -116,6 +141,12 @@ if transcript.status == "error":
 
 
 '''
+if __name__ == "__main__":
+    try:
+        AIVoiceAgent.startConversation()
+
+    except ValueError as e:
+        print(f"config error {e}")
 
 
 
